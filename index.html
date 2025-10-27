@@ -1,0 +1,438 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Transparent AI Vision — Frame-by-Frame</title>
+  <!-- Tailwind via CDN (fine for dev; use PostCSS/CLI for production) -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- GENERATED_BY: PROMPT3.1 -->
+  <style>.thumb{image-rendering:-webkit-optimize-contrast}</style>
+</head>
+<body class="bg-slate-50 text-slate-900">
+  <div class="mx-auto max-w-6xl p-6 space-y-6">
+    <header class="space-y-1">
+      <h1 class="text-3xl font-bold">Transparent AI Vision — Frame-by-Frame</h1>
+      <p class="text-sm text-slate-600">
+        Upload a video, analyze every <span id="ui-step">5</span> seconds, and verify AI output against frame thumbnails.
+      </p>
+    </header>
+
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <section class="lg:col-span-2 space-y-4">
+        <div class="rounded-xl border bg-white shadow-sm p-4 space-y-3">
+          <div id="status" class="text-xs font-medium text-slate-600">Ready</div>
+          <video id="video" class="w-full rounded-lg bg-black" controls playsinline preload="metadata"></video>
+
+          <div class="flex flex-wrap items-center gap-3">
+            <label class="text-sm">
+              <span class="block text-slate-600">Video file:</span>
+              <input id="file" type="file" accept="video/*" class="block text-sm" />
+            </label>
+
+            <label class="flex-1 min-w-[220px] text-sm">
+              <span class="block text-slate-600">Gemini API Key</span>
+              <input id="apiKey" type="password" placeholder="AIza..." class="w-full rounded-md border px-3 py-2" />
+              <div class="text-[11px] text-slate-500">Used client-side to call Google Gemini (no server involved).</div>
+            </label>
+
+            <label class="w-64 text-sm">
+              <span class="block text-slate-600">Analysis Step (seconds)</span>
+              <input id="step" type="number" min="1" value="5" class="w-full rounded-md border px-3 py-2" />
+              <div class="text-[11px] text-slate-500">Default: 5 seconds (0, 5, 10, 15, …)</div>
+            </label>
+
+            <label class="min-w-[220px] flex-1 text-sm">
+              <span class="block text-slate-600">Perspective</span>
+              <select id="perspective" class="w-full rounded-md border px-3 py-2">
+                <option value="objective">Objective Description (default)</option>
+                <option value="urban">Urban Planning Analysis</option>
+                <option value="social">Social Dynamics Analysis</option>
+                <option value="safety">Safety Assessment</option>
+                <option value="accessibility">Accessibility Review</option>
+                <option value="fiction">Creative Fiction (First-Person Story)</option>
+              </select>
+              <div class="text-[11px] text-slate-500">Choose before or after analysis. You can re-analyze frames without recapturing.</div>
+            </label>
+
+            <div class="flex gap-2 ml-auto">
+              <button id="analyze" class="inline-flex items-center gap-2 rounded-md bg-emerald-600 px-4 py-2 text-white disabled:opacity-60">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-5.197-3.027A1 1 0 008 9.027v5.946a1 1 0 001.555.832l5.197-3.027a1 1 0 000-1.664z"/></svg>
+                Analyze Video
+              </button>
+              <button id="reanalyze" class="inline-flex items-center gap-2 rounded-md bg-indigo-600 px-4 py-2 text-white disabled:opacity-60" disabled>
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9H9m11 11v-5h-.581m-15.357-2a8.003 8.003 0 0015.357 2H15"/></svg>
+                Re-analyze with New Perspective
+              </button>
+              <button id="export" class="inline-flex items-center gap-2 rounded-md bg-slate-700 px-4 py-2 text-white disabled:opacity-60" disabled>
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5m0 0l5-5m-5 5V4"/></svg>
+                Download Analysis
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div class="rounded-xl border bg-white shadow-sm">
+          <div class="px-4 py-3 border-b font-medium flex items-center justify-between">
+            <span>Analysis Results</span>
+            <span class="text-xs text-slate-500">Perspective: <span id="perspectiveLabel" class="font-medium">Objective Description</span></span>
+          </div>
+          <div id="results" class="max-h-[420px] overflow-auto p-4 space-y-3"></div>
+          <div class="px-4 py-2 text-xs text-slate-500 flex items-center justify-between">
+            <span><span id="itemsCount">0</span> items</span>
+            <span id="videoMeta" class="truncate max-w-[70%]"></span>
+          </div>
+        </div>
+      </section>
+
+      <aside class="rounded-xl border bg-white shadow-sm p-4">
+        <div class="flex items-center justify-between">
+          <h2 class="font-medium">Debug Log</h2>
+          <div class="flex gap-2">
+            <button id="copyLog" class="text-xs rounded border px-2 py-1">Copy</button>
+            <button id="clearLog" class="text-xs rounded border px-2 py-1">Clear</button>
+          </div>
+        </div>
+        <textarea id="log" class="mt-3 h-[560px] w-full resize-none rounded-md border p-2 font-mono text-[12px]" readonly></textarea>
+      </aside>
+    </div>
+  </div>
+
+  <script>
+    /* ---------------- Debug logger ---------------- */
+    const logEl = document.getElementById('log');
+    function log(...args){const line=`[${new Date().toISOString()}] ${args.join(' ')}`;logEl.value+=(logEl.value?"\n":"")+line;logEl.scrollTop=logEl.scrollHeight;console.debug('[LOG]',...args)}
+    document.getElementById('copyLog').onclick=async()=>{await navigator.clipboard.writeText(logEl.value);log('log copied to clipboard')};
+    document.getElementById('clearLog').onclick=()=>{logEl.value=''};
+
+    /* ---------------- Video Player ---------------- */
+    class VideoPlayer{
+      constructor(videoEl){this.video=videoEl;this.objectUrl=null;this.ready=false;
+        this.video.addEventListener('loadedmetadata',()=>{log('loadedmetadata',`duration=${this.video.duration.toFixed(3)}s`,`size=${this.video.videoWidth}x${this.video.videoHeight}`);this.ready=true});
+        this.video.addEventListener('error',()=>{log('video error',JSON.stringify(this.video.error||{}))});
+      }
+      loadFile(file){if(!file)return; if(this.objectUrl)URL.revokeObjectURL(this.objectUrl); this.ready=false; this.objectUrl=URL.createObjectURL(file); this.video.src=this.objectUrl; this.video.load(); this.video.setAttribute('playsinline',''); log('file selected:',file.name,file.type||'(unknown)'); return this.waitForEvent('loadedmetadata',1e4)}
+      async seekTo(seconds){if(!this.ready)await this.waitForEvent('loadedmetadata',1e4); seconds=Math.min(seconds,Math.max(0,this.video.duration-1e-6)); this.video.currentTime=seconds; log('seek →',seconds.toFixed(3),'s'); await this.waitForSeekStable(seconds)}
+      async waitForSeekStable(target){const v=this.video; await this.waitForEvent('seeked',1e4); const t0=performance.now(); while(v.readyState<HTMLMediaElement.HAVE_CURRENT_DATA||Math.abs(v.currentTime-target)>0.03){if(performance.now()-t0>1e4)throw new Error('seek timeout'); await new Promise(r=>setTimeout(r,30))} log('seek stable @',v.currentTime.toFixed(3),'s, readyState=',v.readyState)}
+      waitForEvent(name,timeoutMs=8e3){return new Promise((resolve,reject)=>{const onOk=()=>{cleanup();resolve()}; const onErr=e=>{cleanup();reject(e instanceof Error?e:new Error(String(e)))}; const timer=setTimeout(()=>onErr(new Error(`${name} timeout`)),timeoutMs); const cleanup=()=>{clearTimeout(timer);this.video.removeEventListener(name,onOk);this.video.removeEventListener('error',onErr)}; this.video.addEventListener(name,onOk,{once:true}); this.video.addEventListener('error',onErr,{once:true})})}
+    }
+
+    /* ---------------- Perspective Manager ---------------- */
+    class PerspectiveManager{
+      constructor(selectEl,labelEl){
+        this.selectEl = selectEl;
+        this.labelEl = labelEl;
+        this.map = {
+          objective: {
+            name: "Objective Description",
+            prompt: "Describe what you see in this video frame. Be objective and factual."
+          },
+          urban: {
+            name: "Urban Planning Analysis",
+            prompt: "Analyze this from an urban planning perspective: traffic flow, pedestrian infrastructure, accessibility features, public space design, and urban functionality."
+          },
+          social: {
+            name: "Social Dynamics Analysis",
+            prompt: "Analyze this from a sociological perspective: social interactions, group behavior, community dynamics, cultural patterns, and interpersonal relationships."
+          },
+          safety: {
+            name: "Safety Assessment",
+            prompt: "Analyze this from a safety perspective: identify potential hazards, risk factors, safety compliance issues, and protective measures."
+          },
+          accessibility: {
+            name: "Accessibility Review",
+            prompt: "Analyze this from an accessibility perspective: identify barriers, evaluate inclusive design features, assess mobility challenges, and note universal design elements."
+          },
+          fiction: {
+            name: "Creative Fiction (First-Person Story)",
+            prompt: "Pick one person visible in this frame and create a brief, respectful first-person narrative from their perspective. What might they be thinking or experiencing? Label clearly as Creative Fiction."
+          }
+        };
+        this.selectEl.addEventListener('change', ()=>this.updateLabel());
+        this.updateLabel();
+      }
+      currentKey(){ return this.selectEl.value || 'objective' }
+      current(){ return this.map[this.currentKey()] }
+      updateLabel(){ const p=this.current(); this.labelEl.textContent = p.name; log('perspective set →', p.name) }
+    }
+
+    /* ---------------- API Manager (auto-discovery) ---------------- */
+    class APIManager{
+      constructor(getKey, perspectiveMgr){
+        this.getKey = getKey;
+        this.perspectiveMgr = perspectiveMgr;
+        this.cached = null; // {version, model}
+        this.versions = ["v1beta","v1"];
+      }
+
+      base(version){return `https://generativelanguage.googleapis.com/${version}`}
+      listUrl(version){return `${this.base(version)}/models?key=${encodeURIComponent(this.getKey())}`}
+      genUrl(version,model){return `${this.base(version)}/models/${model}:generateContent?key=${encodeURIComponent(this.getKey())}`}
+
+      async listModels(version){
+        const res = await fetch(this.listUrl(version));
+        if(!res.ok){const t=await res.text().catch(()=> ""); const e=new Error(`ListModels ${version} HTTP ${res.status}: ${t.slice(0,300)}`); e.status=res.status; throw e}
+        const json = await res.json();
+        const models = json?.models || [];
+        log(`ListModels ${version}:`, models.length, "models");
+        models.slice(0,50).forEach(m=>{
+          const id = m.name?.split("/").pop();
+          const methods = (m.supportedGenerationMethods||[]).join("|");
+          const mods = (m.inputModalities||[]).join("|") || "unknown";
+          log(` • ${version} ${id} methods=[${methods}] modalities=[${mods}]`);
+        });
+        return models;
+      }
+
+      pickModel(models){
+        const supportsGen = m => (m.supportedGenerationMethods||[]).includes("generateContent");
+        const isMulti = m => (m.inputModalities||[]).includes("IMAGE") || /pro-vision|1\.5|flash/i.test(m.name||"");
+        const byScore = [...models]
+          .map(m => ({m,score:(supportsGen(m)?2:0)+(isMulti(m)?2:0)+(/1\.5|flash/i.test(m.name)?1:0)}))
+          .sort((a,b)=>b.score-a.score);
+        return byScore[0]?.m || null;
+      }
+
+      bodyFromDataUrl(dataUrl){
+        const b64 = dataUrl.split(",")[1];
+        const prompt = this.perspectiveMgr.current().prompt;
+        return { contents:[{role:"user", parts:[ {text:prompt}, {inline_data:{mime_type:"image/jpeg", data:b64}} ]}] };
+      }
+
+      async ensureModel(){
+        if(this.cached) return this.cached;
+        const key = this.getKey();
+        if(!key) throw new Error("Missing API key");
+        let lastErr = null;
+
+        for(const v of this.versions){
+          try{
+            const models = await this.listModels(v);
+            if(!Array.isArray(models) || models.length===0){
+              log(`No models returned for ${v}.`);
+              continue;
+            }
+            const chosen = this.pickModel(models);
+            if(chosen){
+              const modelId = chosen.name.split("/").pop();
+              log("Chosen model:", v, modelId);
+              this.cached = {version:v, model:modelId};
+              return this.cached;
+            }
+          }catch(e){
+            lastErr = e;
+            log("ListModels error:", e.message);
+          }
+        }
+        const hint = "Enable the **Generative Language API** for your Google Cloud project, and make sure your API key belongs to that project.";
+        throw lastErr || new Error("No accessible Gemini models for this API key. " + hint);
+      }
+
+      async describeFrame(dataUrl){
+        const cfg = await this.ensureModel(); // {version, model}
+        try{
+          const res = await fetch(this.genUrl(cfg.version, cfg.model), {
+            method:"POST", headers:{"Content-Type":"application/json"},
+            body: JSON.stringify(this.bodyFromDataUrl(dataUrl))
+          });
+          if(!res.ok){
+            const text = await res.text().catch(()=> "");
+            const err = new Error(`Gemini HTTP ${res.status}: ${text.slice(0,500)}`);
+            err.status = res.status;
+            throw err;
+          }
+          const json = await res.json();
+          const text = json?.candidates?.[0]?.content?.parts?.map(p=>p.text).join(" ") || "(no content)";
+          return text.trim();
+        }catch(e){
+          log(`generateContent failed on ${cfg.version}/${cfg.model}:`, e.message);
+          if(e.status===404 || e.status===400){
+            this.cached = null; // force rediscovery in case visibility changed
+          }
+          throw e;
+        }
+      }
+    }
+
+    /* ---------------- Frame Analyzer ---------------- */
+    class FrameAnalyzer{
+      constructor(player,api,resultsEl,statusEl,perspectiveMgr){
+        this.player=player; this.api=api; this.resultsEl=resultsEl; this.statusEl=statusEl; this.perspectiveMgr=perspectiveMgr;
+        this.running=false;
+        this.canvas=document.createElement('canvas'); this.ctx=this.canvas.getContext('2d',{willReadFrequently:true});
+        this.frames=[]; // [{t,dataUrl,rowEl}]
+      }
+      setStatus(t){this.statusEl.textContent=t}
+      clear(){
+        this.resultsEl.innerHTML=''; this.frames=[]; document.getElementById('itemsCount').textContent='0';
+      }
+      async analyze(stepSec=5){
+        if(!this.player.ready) throw new Error('Video not ready. Load a file first.');
+        if(this.running) return; this.running=true;
+        try{
+          const v=this.player.video;
+          this.canvas.width=v.videoWidth; this.canvas.height=v.videoHeight;
+          v.pause(); this.setStatus('Analyzing…'); log('analysis started (capture+analyze)');
+          const duration=v.duration; const stamps=[]; for(let t=0;t<=duration;t+=stepSec)stamps.push(Math.min(t,duration-0.001)); if(stamps[0]!==0)stamps.unshift(0);
+          let idx=0;
+          this.clear();
+          for(const t of stamps){
+            idx++; this.setStatus(`Analyzing ${idx}/${stamps.length} @ ${t.toFixed(2)}s`); log(`→ step ${idx}/${stamps.length} at ${t.toFixed(3)}s`);
+            await this.player.seekTo(t);
+            this.ctx.drawImage(v,0,0,this.canvas.width,this.canvas.height);
+            const dataUrl=this.canvas.toDataURL('image/jpeg',0.85);
+            const row=this.renderRow(t,dataUrl,'Analyzing…');
+            this.frames.push({t,dataUrl,rowEl:row});
+            await this._analyzeOne(row, t, dataUrl);
+          }
+          this.setStatus('Complete'); log('analysis complete');
+        }catch(err){ this.setStatus('Error'); log('ANALYZE ERROR:',err.message); alert('Analyze error: '+err.message) }
+        finally{ this.running=false; document.getElementById('reanalyze').disabled = this.frames.length===0; document.getElementById('export').disabled = this.frames.length===0; }
+      }
+      async reanalyzeExisting(){
+        if(this.running) return;
+        if(this.frames.length===0){ alert('No captured frames. Analyze a video first.'); return; }
+        this.running=true;
+        try{
+          this.setStatus('Re-analyzing…'); log('reanalyze started (no recapture)');
+          let idx=0;
+          for(const fr of this.frames){
+            idx++; this.setStatus(`Re-analyzing ${idx}/${this.frames.length} @ ${fr.t.toFixed(2)}s`);
+            fr.rowEl.querySelector('[data-desc]').textContent='Analyzing…';
+            fr.rowEl.classList.remove('bg-red-50');
+            await this._analyzeOne(fr.rowEl, fr.t, fr.dataUrl);
+          }
+          this.setStatus('Complete'); log('re-analysis complete');
+        }catch(err){ this.setStatus('Error'); log('RE-ANALYZE ERROR:',err.message); alert('Re-analyze error: '+err.message) }
+        finally{ this.running=false; }
+      }
+      async _analyzeOne(row, t, dataUrl){
+        const isFiction = (this.perspectiveMgr.currentKey()==='fiction');
+        try{
+          const desc=await this.api.describeFrame(dataUrl);
+          const finalText = isFiction ? `【Creative Fiction】\n${desc}` : desc;
+          row.querySelector('[data-desc]').textContent=finalText;
+          log('AI OK @',t.toFixed(3),'s', `perspective="${this.perspectiveMgr.current().name}"`);
+        }catch(err){
+          row.querySelector('[data-desc]').textContent=`API error: ${err.message}`;
+          row.classList.add('bg-red-50');
+          log('AI ERROR @',t.toFixed(3),'s →',err.message);
+          await new Promise(r=>setTimeout(r,250));
+        }
+      }
+      renderRow(seconds,dataUrl,text){
+        const el=document.createElement('div'); el.className='flex gap-3 rounded-lg border p-3';
+        el.innerHTML=`<img class="thumb h-20 w-32 object-cover rounded" src="${dataUrl}" alt="frame ${seconds.toFixed(2)}s"/>
+                      <div class="flex-1 min-w-0">
+                        <div class="text-xs text-slate-500">t = ${seconds.toFixed(2)}s</div>
+                        <div data-desc class="text-sm mt-1 whitespace-pre-wrap break-words">${text}</div>
+                      </div>`;
+        this.resultsEl.appendChild(el);
+        document.getElementById('itemsCount').textContent=String(Number(document.getElementById('itemsCount').textContent)+1);
+        return el;
+      }
+      exportText({videoFileName}) {
+        if(this.frames.length===0){ alert('Nothing to export yet.'); return; }
+        const perspective = this.perspectiveMgr.current().name;
+        const isFiction = this.perspectiveMgr.currentKey()==='fiction';
+        const ts = new Date().toISOString();
+        const lines = [];
+        lines.push("Transparent AI Vision — Frame-by-Frame");
+        lines.push("Report Export");
+        lines.push("=".repeat(48));
+        lines.push(`Video file: ${videoFileName || '(unknown)'}`);
+        lines.push(`Analysis timestamp: ${ts}`);
+        lines.push(`Selected perspective: ${perspective}`);
+        lines.push(`Total frames analyzed: ${this.frames.length}`);
+        lines.push("");
+        lines.push("Frame-by-frame analysis");
+        lines.push("-".repeat(48));
+        this.frames.forEach((fr, i)=>{
+          const text = fr.rowEl.querySelector('[data-desc]').textContent || '';
+          const header = `#${String(i+1).padStart(2,'0')} — t=${fr.t.toFixed(2)}s`;
+          lines.push(header);
+          if(isFiction && !/^【Creative Fiction】/i.test(text.trim())){
+            lines.push("【Creative Fiction】"); // ensure labeling even if user changed perspective after
+          }
+          lines.push(text.trim());
+          lines.push(""); // spacer
+        });
+        const blob = new Blob([lines.join("\n")], {type:"text/plain;charset=utf-8"});
+        const a = document.createElement('a');
+        const fnameSafe = (videoFileName||'analysis').replace(/[^\w\-.]+/g,'_');
+        a.download = `${fnameSafe}__analysis_${ts.replace(/[:.]/g,'-')}.txt`;
+        a.href = URL.createObjectURL(blob);
+        a.click();
+        URL.revokeObjectURL(a.href);
+        log('exported analysis text:', a.download);
+      }
+    }
+
+    /* ---------------- Wire up ---------------- */
+    const videoEl=document.getElementById('video');
+    const statusEl=document.getElementById('status');
+    const fileEl=document.getElementById('file');
+    const stepEl=document.getElementById('step');
+    const apiKeyEl=document.getElementById('apiKey');
+    const resultsEl=document.getElementById('results');
+    const analyzeBtn=document.getElementById('analyze');
+    const reanalyzeBtn=document.getElementById('reanalyze');
+    const exportBtn=document.getElementById('export');
+    const uiStep=document.getElementById('ui-step');
+    const perspectiveEl=document.getElementById('perspective');
+    const perspectiveLabel=document.getElementById('perspectiveLabel');
+    const videoMeta=document.getElementById('videoMeta');
+
+    const player=new VideoPlayer(videoEl);
+    const perspectiveMgr=new PerspectiveManager(perspectiveEl, perspectiveLabel);
+    const api=new APIManager(()=>apiKeyEl.value.trim(), perspectiveMgr);
+    const analyzer=new FrameAnalyzer(player,api,resultsEl,statusEl,perspectiveMgr);
+
+    fileEl.addEventListener('change',async(e)=>{
+      const file=e.target.files?.[0]; if(!file)return;
+      resultsEl.innerHTML=''; document.getElementById('itemsCount').textContent='0';
+      videoMeta.textContent = `Selected: ${file.name}`;
+      try{
+        statusEl.textContent='Loading video…';
+        await player.loadFile(file);
+        statusEl.textContent='Ready';
+        analyzeBtn.disabled=false;
+      }catch(err){
+        statusEl.textContent='Error';
+        analyzeBtn.disabled=true;
+        log('FILE LOAD ERROR:',err.message);
+        alert('Video load error: '+err.message);
+      }
+    });
+
+    analyzeBtn.addEventListener('click',async()=>{
+      const step=Math.max(1,Number(stepEl.value)||5);
+      uiStep.textContent=step;
+      try{
+        analyzeBtn.disabled=true; reanalyzeBtn.disabled=true;
+        await analyzer.analyze(step);
+      } finally {
+        analyzeBtn.disabled=false; reanalyzeBtn.disabled = analyzer.frames.length===0 ? true:false; exportBtn.disabled = analyzer.frames.length===0 ? true:false;
+      }
+    });
+
+    reanalyzeBtn.addEventListener('click', async ()=>{
+      try{
+        analyzeBtn.disabled=true; reanalyzeBtn.disabled=true;
+        await analyzer.reanalyzeExisting();
+      } finally {
+        analyzeBtn.disabled=false; reanalyzeBtn.disabled = analyzer.frames.length===0 ? true:false; exportBtn.disabled = analyzer.frames.length===0 ? true:false;
+      }
+    });
+
+    exportBtn.addEventListener('click', ()=>{
+      const fname = fileEl.files?.[0]?.name || '';
+      analyzer.exportText({videoFileName: fname});
+    });
+
+    videoEl.addEventListener('play',()=>log('event: play'));
+    videoEl.addEventListener('pause',()=>log('event: pause'));
+    videoEl.addEventListener('timeupdate',()=>log('timeupdate',videoEl.currentTime.toFixed(3)));
+  </script>
+</body>
+</html>

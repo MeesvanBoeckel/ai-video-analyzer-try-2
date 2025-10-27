@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>AI Video Analyzer Mees van Boeckel</title>
+  <title>Transparent AI Vision — Frame-by-Frame</title>
   <!-- Tailwind via CDN (fine for dev; use PostCSS/CLI for production) -->
   <script src="https://cdn.tailwindcss.com"></script>
   <!-- GENERATED_BY: PROMPT3.1 -->
@@ -59,6 +59,11 @@
               <button id="analyze" class="inline-flex items-center gap-2 rounded-md bg-emerald-600 px-4 py-2 text-white disabled:opacity-60">
                 <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-5.197-3.027A1 1 0 008 9.027v5.946a1 1 0 001.555.832l5.197-3.027a1 1 0 000-1.664z"/></svg>
                 Analyze Video
+              </button>
+              <!-- NEW: Pause / Resume button -->
+              <button id="pause" class="inline-flex items-center gap-2 rounded-md bg-amber-500 px-4 py-2 text-white disabled:opacity-60" disabled>
+                <svg id="pauseIcon" xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 9v6m4-6v6"/></svg>
+                <span id="pauseLabel">Pause</span>
               </button>
               <button id="reanalyze" class="inline-flex items-center gap-2 rounded-md bg-indigo-600 px-4 py-2 text-white disabled:opacity-60" disabled>
                 <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9H9m11 11v-5h-.581m-15.357-2a8.003 8.003 0 0015.357 2H15"/></svg>
@@ -123,30 +128,12 @@
         this.selectEl = selectEl;
         this.labelEl = labelEl;
         this.map = {
-          objective: {
-            name: "Objective Description",
-            prompt: "Describe what you see in this video frame. Be objective and factual."
-          },
-          urban: {
-            name: "Urban Planning Analysis",
-            prompt: "Analyze this from an urban planning perspective: traffic flow, pedestrian infrastructure, accessibility features, public space design, and urban functionality."
-          },
-          social: {
-            name: "Social Dynamics Analysis",
-            prompt: "Analyze this from a sociological perspective: social interactions, group behavior, community dynamics, cultural patterns, and interpersonal relationships."
-          },
-          safety: {
-            name: "Safety Assessment",
-            prompt: "Analyze this from a safety perspective: identify potential hazards, risk factors, safety compliance issues, and protective measures."
-          },
-          accessibility: {
-            name: "Accessibility Review",
-            prompt: "Analyze this from an accessibility perspective: identify barriers, evaluate inclusive design features, assess mobility challenges, and note universal design elements."
-          },
-          fiction: {
-            name: "Creative Fiction (First-Person Story)",
-            prompt: "Pick one person visible in this frame and create a brief, respectful first-person narrative from their perspective. What might they be thinking or experiencing? Label clearly as Creative Fiction."
-          }
+          objective: { name: "Objective Description", prompt: "Describe what you see in this video frame. Be objective and factual." },
+          urban: { name: "Urban Planning Analysis", prompt: "Analyze this from an urban planning perspective: traffic flow, pedestrian infrastructure, accessibility features, public space design, and urban functionality." },
+          social: { name: "Social Dynamics Analysis", prompt: "Analyze this from a sociological perspective: social interactions, group behavior, community dynamics, cultural patterns, and interpersonal relationships." },
+          safety: { name: "Safety Assessment", prompt: "Analyze this from a safety perspective: identify potential hazards, risk factors, safety compliance issues, and protective measures." },
+          accessibility: { name: "Accessibility Review", prompt: "Analyze this from an accessibility perspective: identify barriers, evaluate inclusive design features, assess mobility challenges, and note universal design elements." },
+          fiction: { name: "Creative Fiction (First-Person Story)", prompt: "Pick one person visible in this frame and create a brief, respectful first-person narrative from their perspective. What might they be thinking or experiencing? Label clearly as Creative Fiction." }
         };
         this.selectEl.addEventListener('change', ()=>this.updateLabel());
         this.updateLabel();
@@ -259,6 +246,8 @@
       constructor(player,api,resultsEl,statusEl,perspectiveMgr){
         this.player=player; this.api=api; this.resultsEl=resultsEl; this.statusEl=statusEl; this.perspectiveMgr=perspectiveMgr;
         this.running=false;
+        this.paused=false; // NEW
+        this._resumeWaiter=null; // NEW
         this.canvas=document.createElement('canvas'); this.ctx=this.canvas.getContext('2d',{willReadFrequently:true});
         this.frames=[]; // [{t,dataUrl,rowEl}]
       }
@@ -266,9 +255,14 @@
       clear(){
         this.resultsEl.innerHTML=''; this.frames=[]; document.getElementById('itemsCount').textContent='0';
       }
+      // NEW: pause/resume controls
+      pause(){ if(!this.running || this.paused) return; this.paused=true; this.setStatus('Paused'); log('analysis paused') }
+      resume(){ if(!this.running || !this.paused) return; this.paused=false; if(this._resumeWaiter){ this._resumeWaiter(); this._resumeWaiter=null; } this.setStatus('Analyzing…'); log('analysis resumed') }
+      async waitIfPaused(){ if(!this.paused) return; await new Promise(r=>{ this._resumeWaiter=r; }); }
+
       async analyze(stepSec=5){
         if(!this.player.ready) throw new Error('Video not ready. Load a file first.');
-        if(this.running) return; this.running=true;
+        if(this.running) return; this.running=true; this.paused=false; this._resumeWaiter=null;
         try{
           const v=this.player.video;
           this.canvas.width=v.videoWidth; this.canvas.height=v.videoHeight;
@@ -277,6 +271,8 @@
           let idx=0;
           this.clear();
           for(const t of stamps){
+            // allow pausing between steps
+            await this.waitIfPaused();
             idx++; this.setStatus(`Analyzing ${idx}/${stamps.length} @ ${t.toFixed(2)}s`); log(`→ step ${idx}/${stamps.length} at ${t.toFixed(3)}s`);
             await this.player.seekTo(t);
             this.ctx.drawImage(v,0,0,this.canvas.width,this.canvas.height);
@@ -287,16 +283,17 @@
           }
           this.setStatus('Complete'); log('analysis complete');
         }catch(err){ this.setStatus('Error'); log('ANALYZE ERROR:',err.message); alert('Analyze error: '+err.message) }
-        finally{ this.running=false; document.getElementById('reanalyze').disabled = this.frames.length===0; document.getElementById('export').disabled = this.frames.length===0; }
+        finally{ this.running=false; this.paused=false; this._resumeWaiter=null; document.getElementById('reanalyze').disabled = this.frames.length===0; document.getElementById('export').disabled = this.frames.length===0; }
       }
       async reanalyzeExisting(){
         if(this.running) return;
         if(this.frames.length===0){ alert('No captured frames. Analyze a video first.'); return; }
-        this.running=true;
+        this.running=true; this.paused=false; this._resumeWaiter=null;
         try{
           this.setStatus('Re-analyzing…'); log('reanalyze started (no recapture)');
           let idx=0;
           for(const fr of this.frames){
+            await this.waitIfPaused();
             idx++; this.setStatus(`Re-analyzing ${idx}/${this.frames.length} @ ${fr.t.toFixed(2)}s`);
             fr.rowEl.querySelector('[data-desc]').textContent='Analyzing…';
             fr.rowEl.classList.remove('bg-red-50');
@@ -304,7 +301,7 @@
           }
           this.setStatus('Complete'); log('re-analysis complete');
         }catch(err){ this.setStatus('Error'); log('RE-ANALYZE ERROR:',err.message); alert('Re-analyze error: '+err.message) }
-        finally{ this.running=false; }
+        finally{ this.running=false; this.paused=false; this._resumeWaiter=null; }
       }
       async _analyzeOne(row, t, dataUrl){
         const isFiction = (this.perspectiveMgr.currentKey()==='fiction');
@@ -376,6 +373,9 @@
     const apiKeyEl=document.getElementById('apiKey');
     const resultsEl=document.getElementById('results');
     const analyzeBtn=document.getElementById('analyze');
+    const pauseBtn=document.getElementById('pause'); // NEW
+    const pauseLabel=document.getElementById('pauseLabel'); // NEW
+    const pauseIcon=document.getElementById('pauseIcon'); // NEW
     const reanalyzeBtn=document.getElementById('reanalyze');
     const exportBtn=document.getElementById('export');
     const uiStep=document.getElementById('ui-step');
@@ -396,32 +396,53 @@
         statusEl.textContent='Loading video…';
         await player.loadFile(file);
         statusEl.textContent='Ready';
-        analyzeBtn.disabled=false;
+        analyzeBtn.disabled=false; pauseBtn.disabled=true; // keep pause disabled until analyzing
       }catch(err){
         statusEl.textContent='Error';
-        analyzeBtn.disabled=true;
+        analyzeBtn.disabled=true; pauseBtn.disabled=true;
         log('FILE LOAD ERROR:',err.message);
         alert('Video load error: '+err.message);
       }
     });
 
+    function setPauseUI(isPaused){
+      if(isPaused){
+        pauseLabel.textContent='Resume';
+        // switch to play icon
+        pauseIcon.innerHTML='';
+        pauseIcon.outerHTML = '<svg id="pauseIcon" xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-5.197-3.027A1 1 0 008 9.027v5.946a1 1 0 001.555.832l5.197-3.027a1 1 0 000-1.664z"/></svg>';
+      } else {
+        pauseLabel.textContent='Pause';
+        // switch to pause icon
+        const el = document.getElementById('pauseIcon');
+        if(el){ el.outerHTML = '<svg id="pauseIcon" xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 9v6m4-6v6"/></svg>'; }
+      }
+    }
+
     analyzeBtn.addEventListener('click',async()=>{
       const step=Math.max(1,Number(stepEl.value)||5);
       uiStep.textContent=step;
       try{
-        analyzeBtn.disabled=true; reanalyzeBtn.disabled=true;
+        analyzeBtn.disabled=true; reanalyzeBtn.disabled=true; exportBtn.disabled=true; pauseBtn.disabled=false; setPauseUI(false);
         await analyzer.analyze(step);
       } finally {
-        analyzeBtn.disabled=false; reanalyzeBtn.disabled = analyzer.frames.length===0 ? true:false; exportBtn.disabled = analyzer.frames.length===0 ? true:false;
+        analyzeBtn.disabled=false; reanalyzeBtn.disabled = analyzer.frames.length===0 ? true:false; exportBtn.disabled = analyzer.frames.length===0 ? true:false; pauseBtn.disabled=true; setPauseUI(false);
       }
+    });
+
+    // NEW: Pause/Resume behavior during analyze or reanalyze
+    pauseBtn.addEventListener('click',()=>{
+      if(!analyzer.running) return;
+      if(analyzer.paused){ analyzer.resume(); setPauseUI(false); }
+      else { analyzer.pause(); setPauseUI(true); }
     });
 
     reanalyzeBtn.addEventListener('click', async ()=>{
       try{
-        analyzeBtn.disabled=true; reanalyzeBtn.disabled=true;
+        analyzeBtn.disabled=true; reanalyzeBtn.disabled=true; exportBtn.disabled=true; pauseBtn.disabled=false; setPauseUI(false);
         await analyzer.reanalyzeExisting();
       } finally {
-        analyzeBtn.disabled=false; reanalyzeBtn.disabled = analyzer.frames.length===0 ? true:false; exportBtn.disabled = analyzer.frames.length===0 ? true:false;
+        analyzeBtn.disabled=false; reanalyzeBtn.disabled = analyzer.frames.length===0 ? true:false; exportBtn.disabled = analyzer.frames.length===0 ? true:false; pauseBtn.disabled=true; setPauseUI(false);
       }
     });
 
